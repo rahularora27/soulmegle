@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import "./App.css";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import cameraIcon from "../icons/camera.png";
@@ -19,10 +18,10 @@ function App() {
   const myVideoRef = useRef(null);
   const strangerVideoRef = useRef(null);
   const [spinnerVisible, setSpinnerVisible] = useState(true);
+
   const toggleAudio = () => {
     const localStream = myVideoRef.current.srcObject;
-    const audioTracks = localStream.getAudioTracks();
-    audioTracks.forEach((track) => {
+    localStream.getAudioTracks().forEach((track) => {
       track.enabled = !track.enabled;
       setIsAudioMuted(!track.enabled);
     });
@@ -30,13 +29,12 @@ function App() {
 
   const toggleVideo = () => {
     const localStream = myVideoRef.current.srcObject;
-    const videoTracks = localStream.getVideoTracks();
-
-    videoTracks.forEach((track) => {
+    localStream.getVideoTracks().forEach((track) => {
       track.enabled = !track.enabled;
       setIsVideoMuted(!track.enabled);
     });
   };
+
   const servers = {
     iceServers: [
       {
@@ -58,71 +56,52 @@ function App() {
           };
         }
       })
-      .catch((ex) => {
-        console.log(ex);
-      });
+      .catch(console.log);
   }
 
   useEffect(() => {
     socket.emit("start", (person) => {
       type = person;
-      console.log(type);
     });
   }, []);
 
-  socket.on("roomid", (id) => {
-    roomid = id;
-    console.log(roomid);
-  });
-
+  socket.on("roomid", (id) => (roomid = id));
   socket.on("remote-socket", (id) => {
     remoteSocket = id;
-    console.log("remote id" + remoteSocket);
     setSpinnerVisible(false);
     peer = new RTCPeerConnection(servers);
-    peer.onnegotiationneeded = async (e) => {
-      if (peer) {
-        webrtc();
-      }
-    };
-
-    peer.onicecandidate = async (e) => {
-      if (peer) {
+    peer.onnegotiationneeded = webrtc;
+    peer.onicecandidate = (e) => {
+      if (peer)
         socket.emit("ice:send", { candidate: e.candidate, to: remoteSocket });
-      }
     };
     start();
   });
 
   async function webrtc() {
-    if (type == "p1") {
+    if (type === "p1") {
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
       socket.emit("sdp:send", { sdp: peer.localDescription });
-      console.log("offer created,set and sent to server");
     }
   }
 
-  socket.on("sdp:reply", async ({ sdp, from }) => {
+  socket.on("sdp:reply", async ({ sdp }) => {
     if (peer) {
       await peer.setRemoteDescription(new RTCSessionDescription(sdp));
-      if (type == "p2") {
+      if (type === "p2") {
         const ans = await peer.createAnswer();
         await peer.setLocalDescription(ans);
         socket.emit("sdp:send", { sdp: peer.localDescription });
-        console.log("offer set as remotes desc and answer created and sent ");
       }
     }
   });
 
-  socket.on("ice:reply", async ({ candidate, from }) => {
-    if (peer) {
-      await peer.addIceCandidate(candidate);
-    }
+  socket.on("ice:reply", async ({ candidate }) => {
+    if (peer) await peer.addIceCandidate(candidate);
   });
 
   const leaveRoom = () => {
-    console.log("function reached here leave room");
     socket.emit("leave");
     navigate("/");
     window.location.reload(true);
@@ -130,46 +109,83 @@ function App() {
 
   socket.on("disconnected", () => {
     peer.close();
-    console.log("disconnected");
     navigate("/");
     socket.emit("leave");
   });
 
   return (
-    <>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900">
       {spinnerVisible && (
-        <div className="modal">
-          <div class="custom-loader"></div>
-          <span id="spinner">Waiting For Someone...</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-90 z-50">
+          <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-gray-200 font-bold mt-4">
+            Waiting For Someone...
+          </span>
         </div>
       )}
-      <div className="video-holder">
-        <video autoPlay ref={myVideoRef} id="my-video"></video>
-        <video autoPlay ref={strangerVideoRef} id="video"></video>
-
-        <div id="controls">
-          <div
-            className="control-container"
-            id="camera-btn"
-            onClick={toggleVideo}
-          >
-            <img src={cameraIcon} alt="Camera" />
-          </div>
-
-          <div className="control-container" id="mic-btn" onClick={toggleAudio}>
-            <img src={micIcon} alt="Microphone" />
-          </div>
-
-          <div
-            className="control-container"
-            id="leave-btn"
-            onClick={() => leaveRoom()}
-          >
-            <img src={phoneIcon} alt="Phone" />
-          </div>
-        </div>
+      <div className="relative p-8 w-full flex justify-center">
+        <video
+          autoPlay
+          ref={myVideoRef}
+          className="absolute bottom-4 right-4 w-40 h-40 bg-gray-800 rounded-lg shadow-lg 
+                     border-2 border-gray-700 z-10"
+        ></video>
+        <video
+          autoPlay
+          ref={strangerVideoRef}
+          className="w-full h-[calc(100vh-120px)] bg-gray-800 rounded-lg shadow-lg 
+                     border-2 border-gray-700"
+        ></video>
       </div>
-    </>
+      <div className="fixed bottom-10 flex gap-6">
+        <button
+          className={`p-4 rounded-full shadow-md transition transform duration-300 ease-in-out 
+                     hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
+                     focus:ring-offset-2 focus:ring-offset-gray-900
+                     ${
+                       isVideoMuted
+                         ? "bg-gray-700"
+                         : "bg-purple-600 hover:bg-purple-700"
+                     }`}
+          onClick={toggleVideo}
+        >
+          <img
+            src={cameraIcon}
+            alt="Camera"
+            className="w-6 h-6 filter brightness-0 invert"
+          />
+        </button>
+        <button
+          className={`p-4 rounded-full shadow-md transition transform duration-300 ease-in-out 
+                     hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
+                     focus:ring-offset-2 focus:ring-offset-gray-900
+                     ${
+                       isAudioMuted
+                         ? "bg-gray-700"
+                         : "bg-purple-600 hover:bg-purple-700"
+                     }`}
+          onClick={toggleAudio}
+        >
+          <img
+            src={micIcon}
+            alt="Microphone"
+            className="w-6 h-6 filter brightness-0 invert"
+          />
+        </button>
+        <button
+          className="bg-red-600 p-4 rounded-full shadow-md transition transform duration-300 
+                     ease-in-out hover:bg-red-700 hover:scale-105 focus:outline-none focus:ring-2 
+                     focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+          onClick={leaveRoom}
+        >
+          <img
+            src={phoneIcon}
+            alt="Leave"
+            className="w-6 h-6 filter brightness-0 invert"
+          />
+        </button>
+      </div>
+    </div>
   );
 }
 
