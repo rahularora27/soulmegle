@@ -9,6 +9,7 @@ const corsOptions = {
   origin: ["http://localhost:5173"],
   methods: ["GET", "POST"],
 };
+
 let online = 0;
 let roomArr = [];
 
@@ -19,16 +20,21 @@ const io = socketIO(server, {
 io.on("connection", (socket) => {
   online++;
   console.log(`A user connected with id ${socket.id}`);
+  io.emit("online", online);
+
+  // Flag to prevent double decrementing
+  let alreadyDisconnected = false;
+
   socket.on("start", (cb) => {
     handelStart(roomArr, socket, cb, io);
   });
 
   socket.on("ice:send", ({ candidate }) => {
     let type = getType(socket.id, roomArr);
-    if (type.type) {
-      if (type == "p1") {
+    if (type) {
+      if (type.type === "p1" && type.p2id) {
         io.to(type.p2id).emit("ice:reply", { candidate, from: socket.id });
-      } else if (type?.type == "p2") {
+      } else if (type.type === "p2" && type.p1id) {
         io.to(type.p1id).emit("ice:reply", { candidate, from: socket.id });
       }
     }
@@ -37,21 +43,47 @@ io.on("connection", (socket) => {
   socket.on("sdp:send", ({ sdp }) => {
     let type = getType(socket.id, roomArr);
     if (type) {
-      if (type.type == "p1") {
+      if (type.type === "p1" && type.p2id) {
         io.to(type.p2id).emit("sdp:reply", { sdp, from: socket.id });
-      }
-      if (type.type == "p2") {
+      } else if (type.type === "p2" && type.p1id) {
         io.to(type.p1id).emit("sdp:reply", { sdp, from: socket.id });
+      }
+    }
+  });
+
+  // Handle chat messages
+  socket.on("chat:send", ({ message }) => {
+    let type = getType(socket.id, roomArr);
+    if (type) {
+      if (type.type === "p1" && type.p2id) {
+        io.to(type.p2id).emit("chat:receive", { message, from: socket.id });
+      } else if (type.type === "p2" && type.p1id) {
+        io.to(type.p1id).emit("chat:receive", { message, from: socket.id });
       }
     }
   });
 
   socket.on("leave", () => {
     console.log("leave reached here");
-    online--;
-    io.emit("online", online);
-    socket.disconnect();
-    console.log(online);
+
+    if (!alreadyDisconnected) {
+      online--;
+      io.emit("online", online);
+      alreadyDisconnected = true;
+    }
+
+    // No need to call socket.disconnect() here
+    console.log(`Online users: ${online}`);
+    handelDisconnect(socket.id, roomArr, io);
+  });
+
+  socket.on("disconnect", () => {
+    if (!alreadyDisconnected) {
+      online--;
+      io.emit("online", online);
+      alreadyDisconnected = true;
+    }
+    console.log(`A user disconnected. Online users: ${online}`);
     handelDisconnect(socket.id, roomArr, io);
   });
 });

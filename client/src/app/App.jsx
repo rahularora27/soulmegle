@@ -4,117 +4,272 @@ import { io } from "socket.io-client";
 import cameraIcon from "../icons/camera.png";
 import micIcon from "../icons/mic.png";
 import phoneIcon from "../icons/phone.png";
+import logo from "/logo.svg";
 
 function App() {
-  let peer;
-  let roomid;
-  let type;
-  let remoteSocket;
   const navigate = useNavigate();
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
-  const [socket, setSocket] = useState(io("http://localhost:8000"));
-
-  const myVideoRef = useRef(null);
-  const strangerVideoRef = useRef(null);
   const [spinnerVisible, setSpinnerVisible] = useState(true);
 
-  const toggleAudio = () => {
-    const localStream = myVideoRef.current.srcObject;
-    localStream.getAudioTracks().forEach((track) => {
-      track.enabled = !track.enabled;
-      setIsAudioMuted(!track.enabled);
+  const [messages, setMessages] = useState([]); // Chat messages
+  const [newMessage, setNewMessage] = useState(""); // New message input
+
+  const socketRef = useRef();
+  const peerRef = useRef();
+  const typeRef = useRef();
+  const remoteSocketRef = useRef();
+  const localStreamRef = useRef(null);
+  const myVideoRef = useRef(null);
+  const strangerVideoRef = useRef(null);
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    // Initialize socket connection
+    socketRef.current = io("http://localhost:8000");
+
+    // Emit 'start' event to the server
+    socketRef.current.emit("start", (person) => {
+      typeRef.current = person;
     });
-  };
 
-  const toggleVideo = () => {
-    const localStream = myVideoRef.current.srcObject;
-    localStream.getVideoTracks().forEach((track) => {
-      track.enabled = !track.enabled;
-      setIsVideoMuted(!track.enabled);
+    // Listen for 'remote-socket' event from the server
+    socketRef.current.on("remote-socket", (id) => {
+      remoteSocketRef.current = id;
+      setSpinnerVisible(false);
+
+      // Initialize the RTCPeerConnection
+      peerRef.current = new RTCPeerConnection({
+        iceServers: [
+          {
+            urls: ["stun:stun.l.google.com:19302"], // Use a public STUN server
+          },
+        ],
+      });
+
+      // Handle negotiation needed event
+      peerRef.current.onnegotiationneeded = handleNegotiationNeeded;
+
+      // Handle ICE candidate event
+      peerRef.current.onicecandidate = handleICECandidateEvent;
+
+      // Handle incoming tracks (media streams)
+      peerRef.current.ontrack = handleTrackEvent;
+
+      // Start media (camera and microphone)
+      startMediaStream();
     });
+
+    // Listen for SDP reply from the server
+    socketRef.current.on("sdp:reply", handleSDPReply);
+
+    // Listen for ICE candidate reply from the server
+    socketRef.current.on("ice:reply", handleICECandidateReply);
+
+    // Handle 'disconnected' event from the server
+    socketRef.current.on("disconnected", handleRemoteDisconnect);
+
+    // Handle incoming chat messages
+    socketRef.current.on("chat:receive", ({ message, from }) => {
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { text: message, sender: "them" },
+      ]);
+    });
+
+    // Clean up on component unmount
+    return () => {
+      // Stop all media tracks
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
+      if (peerRef.current) {
+        peerRef.current.close();
+      }
+
+      if (socketRef.current) {
+        socketRef.current.emit("leave");
+        socketRef.current.disconnect();
+        // Remove all listeners
+        socketRef.current.off("remote-socket");
+        socketRef.current.off("sdp:reply");
+        socketRef.current.off("ice:reply");
+        socketRef.current.off("disconnected");
+        socketRef.current.off("chat:receive");
+      }
+
+      // Clear messages
+      setMessages([]);
+    };
+  }, [navigate]);
+
+  // Handler functions
+  const handleNegotiationNeeded = async () => {
+    if (typeRef.current === "p1") {
+      try {
+        const offer = await peerRef.current.createOffer();
+        await peerRef.current.setLocalDescription(offer);
+        socketRef.current.emit("sdp:send", {
+          sdp: peerRef.current.localDescription,
+        });
+      } catch (error) {
+        console.error("Error during negotiation needed:", error);
+      }
+    }
   };
 
-  const servers = {
-    iceServers: [
-      {
-        urls: ["stun:stun.arbuz.ru:3478", "stun:stun.bahnhof.net:3478"],
-      },
-    ],
+  const handleICECandidateEvent = (event) => {
+    if (event.candidate) {
+      socketRef.current.emit("ice:send", { candidate: event.candidate });
+    }
   };
 
-  function start() {
+  const handleSDPReply = async ({ sdp }) => {
+    try {
+      await peerRef.current.setRemoteDescription(
+        new RTCSessionDescription(sdp)
+      );
+      if (typeRef.current === "p2") {
+        const answer = await peerRef.current.createAnswer();
+        await peerRef.current.setLocalDescription(answer);
+        socketRef.current.emit("sdp:send", {
+          sdp: peerRef.current.localDescription,
+        });
+      }
+    } catch (error) {
+      console.error("Error handling SDP reply:", error);
+    }
+  };
+
+  const handleICECandidateReply = async ({ candidate }) => {
+    try {
+      if (candidate) {
+        await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    } catch (error) {
+      console.error("Error adding received ICE candidate:", error);
+    }
+  };
+
+  const handleTrackEvent = (event) => {
+    // Set the stream of the remote video element
+    if (strangerVideoRef.current) {
+      strangerVideoRef.current.srcObject = event.streams[0];
+    }
+  };
+
+  const handleRemoteDisconnect = () => {
+    if (peerRef.current) {
+      peerRef.current.close();
+    }
+
+    // Stop all media tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+
+    // Clear messages
+    setMessages([]);
+
+    navigate("/");
+  };
+
+  const startMediaStream = () => {
     navigator.mediaDevices
       .getUserMedia({ audio: true, video: true })
       .then((stream) => {
-        if (peer) {
+        // Store the local media stream
+        localStreamRef.current = stream;
+
+        if (myVideoRef.current) {
           myVideoRef.current.srcObject = stream;
-          stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-          peer.ontrack = (e) => {
-            strangerVideoRef.current.srcObject = e.streams[0];
-            strangerVideoRef.current.play();
-          };
         }
+        stream
+          .getTracks()
+          .forEach((track) => peerRef.current.addTrack(track, stream));
       })
-      .catch(console.log);
-  }
-
-  useEffect(() => {
-    socket.emit("start", (person) => {
-      type = person;
-    });
-  }, []);
-
-  socket.on("roomid", (id) => (roomid = id));
-  socket.on("remote-socket", (id) => {
-    remoteSocket = id;
-    setSpinnerVisible(false);
-    peer = new RTCPeerConnection(servers);
-    peer.onnegotiationneeded = webrtc;
-    peer.onicecandidate = (e) => {
-      if (peer)
-        socket.emit("ice:send", { candidate: e.candidate, to: remoteSocket });
-    };
-    start();
-  });
-
-  async function webrtc() {
-    if (type === "p1") {
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      socket.emit("sdp:send", { sdp: peer.localDescription });
-    }
-  }
-
-  socket.on("sdp:reply", async ({ sdp }) => {
-    if (peer) {
-      await peer.setRemoteDescription(new RTCSessionDescription(sdp));
-      if (type === "p2") {
-        const ans = await peer.createAnswer();
-        await peer.setLocalDescription(ans);
-        socket.emit("sdp:send", { sdp: peer.localDescription });
-      }
-    }
-  });
-
-  socket.on("ice:reply", async ({ candidate }) => {
-    if (peer) await peer.addIceCandidate(candidate);
-  });
-
-  const leaveRoom = () => {
-    socket.emit("leave");
-    navigate("/");
-    window.location.reload(true);
+      .catch((error) => {
+        console.error("Error accessing media devices.", error);
+      });
   };
 
-  socket.on("disconnected", () => {
-    peer.close();
+  const toggleAudio = () => {
+    const localStream = localStreamRef.current;
+    if (localStream) {
+      localStream.getAudioTracks().forEach((track) => {
+        track.enabled = !track.enabled;
+        setIsAudioMuted(!track.enabled);
+      });
+    }
+  };
+
+  const toggleVideo = () => {
+    const localStream = localStreamRef.current;
+    if (localStream) {
+      localStream.getVideoTracks().forEach((track) => {
+        track.enabled = !track.enabled;
+        setIsVideoMuted(!track.enabled);
+      });
+    }
+  };
+
+  const leaveRoom = () => {
+    // Stop all media tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+
+    if (peerRef.current) {
+      peerRef.current.close();
+    }
+
+    if (socketRef.current) {
+      socketRef.current.emit("leave");
+      socketRef.current.disconnect();
+      // Remove all listeners
+      socketRef.current.off("remote-socket");
+      socketRef.current.off("sdp:reply");
+      socketRef.current.off("ice:reply");
+      socketRef.current.off("disconnected");
+      socketRef.current.off("chat:receive");
+    }
+
+    // Clear messages
+    setMessages([]);
+
     navigate("/");
-    socket.emit("leave");
-  });
+  };
+
+  // Chat functions
+  const sendMessage = () => {
+    if (newMessage.trim() !== "") {
+      // Emit the 'chat:send' event to the server
+      socketRef.current.emit("chat:send", { message: newMessage });
+
+      // Add the message to the local messages array
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { text: newMessage, sender: "me" },
+      ]);
+
+      // Clear the input field
+      setNewMessage("");
+    }
+  };
+
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900">
+    <div className="flex flex-col min-h-screen bg-gray-900">
       {spinnerVisible && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-90 z-50">
           <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
@@ -123,57 +278,131 @@ function App() {
           </span>
         </div>
       )}
-      <div className="relative p-8 w-full flex justify-center">
-        <video
-          autoPlay
-          ref={myVideoRef}
-          className="absolute bottom-4 right-4 w-40 h-40 bg-gray-800 rounded-lg shadow-lg 
-                     border-2 border-gray-700 z-10"
-        ></video>
-        <video
-          autoPlay
-          ref={strangerVideoRef}
-          className="w-full h-[calc(100vh-120px)] bg-gray-800 rounded-lg shadow-lg 
-                     border-2 border-gray-700"
-        ></video>
+
+      {/* Top Section: Videos */}
+      <div className="flex flex-col lg:flex-row w-full flex-grow">
+        {/* Videos Container */}
+        <div className="flex flex-col w-full lg:w-1/2 p-4 items-center justify-center">
+          <div className="flex items-center">
+            <img src={logo} alt="SoulMegle Logo" className="h-10 w-10 mr-2" />{" "}
+            <span className="text-2xl font-bold text-white">SoulMegle</span>
+          </div>
+          <div className="flex flex-col lg:flex-row">
+            {/* Remote Video */}
+            <div className="relative m-2">
+              <video
+                autoPlay
+                ref={strangerVideoRef}
+                className="w-40 h-40 sm:w-60 sm:h-60 lg:w-80 lg:h-80 bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700"
+              />
+              <span className="absolute top-2 left-2 bg-gray-800 bg-opacity-75 text-gray-200 px-2 py-1 rounded">
+                Stranger
+              </span>
+            </div>
+
+            {/* Local Video */}
+            <div className="relative m-2">
+              <video
+                autoPlay
+                muted // Ensure the local video is muted to prevent echo
+                ref={myVideoRef}
+                className="w-40 h-40 sm:w-60 sm:h-60 lg:w-80 lg:h-80 bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700"
+              />
+              <span className="absolute top-2 left-2 bg-gray-800 bg-opacity-75 text-gray-200 px-2 py-1 rounded">
+                You
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Chat Interface */}
+        <div className="flex flex-col w-full lg:w-1/2 p-4">
+          <div className="flex flex-col flex-1 bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700 p-4">
+            {/* Messages Display */}
+            <div className="flex-1 overflow-y-auto mb-4">
+              {messages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`mb-2 ${
+                    msg.sender === "me" ? "text-right" : "text-left"
+                  }`}
+                >
+                  <span
+                    className={`inline-block px-3 py-2 rounded-lg ${
+                      msg.sender === "me"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-700 text-gray-200"
+                    }`}
+                  >
+                    {msg.text}
+                  </span>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+            {/* Input Field and Send Button */}
+            <div className="flex items-center">
+              <input
+                type="text"
+                className="flex-1 px-3 py-2 rounded-lg bg-gray-700 text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="Type a message..."
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    sendMessage();
+                  }
+                }}
+              />
+              <button
+                onClick={sendMessage}
+                className="ml-2 px-4 py-2 bg-purple-600 text-white font-bold rounded-lg shadow-md hover:bg-purple-700 transition transform duration-300 ease-in-out hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-      <div className="fixed bottom-10 flex gap-6">
+
+      {/* Bottom Section: Control Buttons */}
+      <div className="flex justify-center space-x-4 p-4">
         <button
-          className={`p-4 rounded-full shadow-md transition transform duration-300 ease-in-out 
-                     hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
-                     focus:ring-offset-2 focus:ring-offset-gray-900
-                     ${
-                       isVideoMuted
-                         ? "bg-gray-700"
-                         : "bg-purple-600 hover:bg-purple-700"
-                     }`}
+          className={`p-3 rounded-full shadow-md transition transform duration-300 ease-in-out 
+                       hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
+                       focus:ring-offset-2 focus:ring-offset-gray-900
+                       ${
+                         isVideoMuted
+                           ? "bg-gray-700"
+                           : "bg-purple-600 hover:bg-purple-700"
+                       }`}
           onClick={toggleVideo}
         >
           <img
             src={cameraIcon}
             alt="Camera"
-            className="w-6 h-6 filter brightness-0 invert"
+            className="w-5 h-5 filter brightness-0 invert"
           />
         </button>
         <button
-          className={`p-4 rounded-full shadow-md transition transform duration-300 ease-in-out 
-                     hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
-                     focus:ring-offset-2 focus:ring-offset-gray-900
-                     ${
-                       isAudioMuted
-                         ? "bg-gray-700"
-                         : "bg-purple-600 hover:bg-purple-700"
-                     }`}
+          className={`p-3 rounded-full shadow-md transition transform duration-300 ease-in-out 
+                       hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
+                       focus:ring-offset-2 focus:ring-offset-gray-900
+                       ${
+                         isAudioMuted
+                           ? "bg-gray-700"
+                           : "bg-purple-600 hover:bg-purple-700"
+                       }`}
           onClick={toggleAudio}
         >
           <img
             src={micIcon}
             alt="Microphone"
-            className="w-6 h-6 filter brightness-0 invert"
+            className="w-5 h-5 filter brightness-0 invert"
           />
         </button>
         <button
-          className="bg-red-600 p-4 rounded-full shadow-md transition transform duration-300 
+          className="bg-red-600 p-3 rounded-full shadow-md transition transform duration-300 
                      ease-in-out hover:bg-red-700 hover:scale-105 focus:outline-none focus:ring-2 
                      focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900"
           onClick={leaveRoom}
@@ -181,7 +410,7 @@ function App() {
           <img
             src={phoneIcon}
             alt="Leave"
-            className="w-6 h-6 filter brightness-0 invert"
+            className="w-5 h-5 filter brightness-0 invert"
           />
         </button>
       </div>
