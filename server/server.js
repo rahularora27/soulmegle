@@ -3,7 +3,12 @@ const http = require("http");
 const socketIO = require("socket.io");
 const app = express();
 const server = http.createServer(app);
-const { handelStart, getType, handelDisconnect } = require("./src/function");
+const {
+  handelStart,
+  getType,
+  handelDisconnect,
+  handelSkip,
+} = require("./src/function");
 
 const corsOptions = {
   origin: ["http://localhost:5173"],
@@ -61,6 +66,12 @@ io.on("connection", (socket) => {
         io.to(type.p1id).emit("chat:receive", { message, from: socket.id });
       }
     }
+  });
+
+  // Handle skip event
+  socket.on("skip", () => {
+    console.log(`User ${socket.id} requested to skip`);
+    handelSkip(socket.id, roomArr, io);
   });
 
   socket.on("leave", () => {

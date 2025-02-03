@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
-import cameraIcon from "../icons/camera.png";
-import micIcon from "../icons/mic.png";
-import phoneIcon from "../icons/phone.png";
+import {
+  IconDeviceComputerCamera,
+  IconMicrophoneFilled,
+  IconPlayerTrackNextFilled,
+  IconPhoneFilled,
+} from "@tabler/icons-react";
 import logo from "/logo.svg";
 
 function App() {
@@ -28,10 +31,8 @@ function App() {
     // Initialize socket connection
     socketRef.current = io("http://localhost:8000");
 
-    // Emit 'start' event to the server
-    socketRef.current.emit("start", (person) => {
-      typeRef.current = person;
-    });
+    // Start the initial connection
+    initiateConnection();
 
     // Listen for 'remote-socket' event from the server
     socketRef.current.on("remote-socket", (id) => {
@@ -73,8 +74,30 @@ function App() {
     socketRef.current.on("chat:receive", ({ message, from }) => {
       setMessages((prevMessages) => [
         ...prevMessages,
-        { text: message, sender: "them" },
+        { text: message, sender: "Stranger" },
       ]);
+    });
+
+    // Handle being skipped by the other user
+    socketRef.current.on("skipped", () => {
+      // Clean up current connections and states
+      if (peerRef.current) {
+        peerRef.current.close();
+        peerRef.current = null;
+      }
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop());
+        localStreamRef.current = null;
+      }
+
+      // Clear messages
+      setMessages([]);
+      setNewMessage("");
+
+      // Restart the connection process
+      setSpinnerVisible(true);
+      initiateConnection();
     });
 
     // Clean up on component unmount
@@ -97,6 +120,7 @@ function App() {
         socketRef.current.off("ice:reply");
         socketRef.current.off("disconnected");
         socketRef.current.off("chat:receive");
+        socketRef.current.off("skipped");
       }
 
       // Clear messages
@@ -105,6 +129,17 @@ function App() {
   }, [navigate]);
 
   // Handler functions
+  const initiateConnection = () => {
+    // Reset state variables if needed
+    peerRef.current = null;
+    typeRef.current = null;
+    remoteSocketRef.current = null;
+
+    socketRef.current.emit("start", (person) => {
+      typeRef.current = person;
+    });
+  };
+
   const handleNegotiationNeeded = async () => {
     if (typeRef.current === "p1") {
       try {
@@ -233,12 +268,40 @@ function App() {
       socketRef.current.off("ice:reply");
       socketRef.current.off("disconnected");
       socketRef.current.off("chat:receive");
+      socketRef.current.off("skipped");
     }
 
     // Clear messages
     setMessages([]);
 
     navigate("/");
+  };
+
+  const skipRoom = () => {
+    // Notify the server to skip
+    socketRef.current.emit("skip");
+
+    // Clean up current connections and states
+    if (peerRef.current) {
+      peerRef.current.close();
+      peerRef.current = null;
+    }
+
+    // Stop local media tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
+
+    // Clear messages
+    setMessages([]);
+    setNewMessage("");
+
+    // Restart the connection process
+    setSpinnerVisible(true);
+
+    // Start looking for a new match
+    initiateConnection();
   };
 
   // Chat functions
@@ -250,7 +313,7 @@ function App() {
       // Add the message to the local messages array
       setMessages((prevMessages) => [
         ...prevMessages,
-        { text: newMessage, sender: "me" },
+        { text: newMessage, sender: "You" },
       ]);
 
       // Clear the input field
@@ -269,7 +332,7 @@ function App() {
   }, [messages]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-900">
+    <div className="flex flex-col h-screen bg-gray-900">
       {spinnerVisible && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-90 z-50">
           <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
@@ -279,21 +342,71 @@ function App() {
         </div>
       )}
 
-      {/* Top Section: Videos */}
-      <div className="flex flex-col lg:flex-row w-full flex-grow">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 bg-gray-800">
+        <div className="flex items-center">
+          <img src={logo} alt="SoulMegle Logo" className="h-10 w-10 mr-2" />
+          <span className="text-2xl font-bold text-white">SoulMegle</span>
+        </div>
+        {/* Control Buttons */}
+        <div className="flex space-x-4">
+          <button
+            className={`p-3 rounded-full shadow-md transition transform duration-300 ease-in-out 
+                         hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
+                         focus:ring-offset-2 focus:ring-offset-gray-900
+                         ${
+                           isVideoMuted
+                             ? "bg-gray-700"
+                             : "bg-purple-600 hover:bg-purple-700"
+                         }`}
+            onClick={toggleVideo}
+          >
+            <IconDeviceComputerCamera className="text-white" />
+          </button>
+          <button
+            className={`p-3 rounded-full shadow-md transition transform duration-300 ease-in-out 
+                         hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
+                         focus:ring-offset-2 focus:ring-offset-gray-900
+                         ${
+                           isAudioMuted
+                             ? "bg-gray-700"
+                             : "bg-purple-600 hover:bg-purple-700"
+                         }`}
+            onClick={toggleAudio}
+          >
+            <IconMicrophoneFilled className="text-white" />
+          </button>
+          <button
+            className={`p-3 rounded-full shadow-md transition transform duration-300 ease-in-out 
+                         hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 
+                         focus:ring-offset-2 focus:ring-offset-gray-900
+                         bg-blue-600 hover:bg-blue-700`}
+            onClick={skipRoom}
+          >
+            <IconPlayerTrackNextFilled className="text-white" />
+          </button>
+          <button
+            className="bg-red-600 p-3 rounded-full shadow-md transition transform duration-300 
+                       ease-in-out hover:bg-red-700 hover:scale-105 focus:outline-none focus:ring-2 
+                       focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+            onClick={leaveRoom}
+          >
+            <IconPhoneFilled className="text-white" />
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex flex-col md:flex-row flex-grow overflow-hidden">
         {/* Videos Container */}
-        <div className="flex flex-col w-full lg:w-1/2 p-4 items-center justify-center">
-          <div className="flex items-center">
-            <img src={logo} alt="SoulMegle Logo" className="h-10 w-10 mr-2" />{" "}
-            <span className="text-2xl font-bold text-white">SoulMegle</span>
-          </div>
-          <div className="flex flex-col lg:flex-row">
+        <div className="flex flex-col w-full md:w-1/2 p-4">
+          <div className="flex flex-col items-center space-y-4">
             {/* Remote Video */}
-            <div className="relative m-2">
+            <div className="relative w-full max-w-md">
               <video
                 autoPlay
                 ref={strangerVideoRef}
-                className="w-40 h-40 sm:w-60 sm:h-60 lg:w-80 lg:h-80 bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700"
+                className="w-full h-auto bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700"
               />
               <span className="absolute top-2 left-2 bg-gray-800 bg-opacity-75 text-gray-200 px-2 py-1 rounded">
                 Stranger
@@ -301,12 +414,12 @@ function App() {
             </div>
 
             {/* Local Video */}
-            <div className="relative m-2">
+            <div className="relative w-full max-w-md">
               <video
                 autoPlay
                 muted // Ensure the local video is muted to prevent echo
                 ref={myVideoRef}
-                className="w-40 h-40 sm:w-60 sm:h-60 lg:w-80 lg:h-80 bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700"
+                className="w-full h-auto bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700"
               />
               <span className="absolute top-2 left-2 bg-gray-800 bg-opacity-75 text-gray-200 px-2 py-1 rounded">
                 You
@@ -316,26 +429,36 @@ function App() {
         </div>
 
         {/* Chat Interface */}
-        <div className="flex flex-col w-full lg:w-1/2 p-4">
-          <div className="flex flex-col flex-1 bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700 p-4">
+        <div className="flex flex-col w-full md:w-1/2 p-4">
+          <div className="flex flex-col flex-1 bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700 p-4 overflow-hidden">
             {/* Messages Display */}
             <div className="flex-1 overflow-y-auto mb-4">
               {messages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`mb-2 ${
-                    msg.sender === "me" ? "text-right" : "text-left"
-                  }`}
-                >
-                  <span
-                    className={`inline-block px-3 py-2 rounded-lg ${
-                      msg.sender === "me"
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-700 text-gray-200"
+                <div key={index}>
+                  {/* Nameholder */}
+                  <div
+                    className={`mb-1 ${
+                      msg.sender === "You" ? "text-right" : "text-left"
                     }`}
                   >
-                    {msg.text}
-                  </span>
+                    <span className="text-xs text-gray-400">{msg.sender}</span>
+                  </div>
+                  {/* Message */}
+                  <div
+                    className={`mb-2 ${
+                      msg.sender === "You" ? "text-right" : "text-left"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block px-3 py-2 rounded-lg ${
+                        msg.sender === "You"
+                          ? "bg-purple-600 text-white"
+                          : "bg-gray-700 text-gray-200"
+                      }`}
+                    >
+                      {msg.text}
+                    </span>
+                  </div>
                 </div>
               ))}
               <div ref={messagesEndRef} />
@@ -363,56 +486,6 @@ function App() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Bottom Section: Control Buttons */}
-      <div className="flex justify-center space-x-4 p-4">
-        <button
-          className={`p-3 rounded-full shadow-md transition transform duration-300 ease-in-out 
-                       hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
-                       focus:ring-offset-2 focus:ring-offset-gray-900
-                       ${
-                         isVideoMuted
-                           ? "bg-gray-700"
-                           : "bg-purple-600 hover:bg-purple-700"
-                       }`}
-          onClick={toggleVideo}
-        >
-          <img
-            src={cameraIcon}
-            alt="Camera"
-            className="w-5 h-5 filter brightness-0 invert"
-          />
-        </button>
-        <button
-          className={`p-3 rounded-full shadow-md transition transform duration-300 ease-in-out 
-                       hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
-                       focus:ring-offset-2 focus:ring-offset-gray-900
-                       ${
-                         isAudioMuted
-                           ? "bg-gray-700"
-                           : "bg-purple-600 hover:bg-purple-700"
-                       }`}
-          onClick={toggleAudio}
-        >
-          <img
-            src={micIcon}
-            alt="Microphone"
-            className="w-5 h-5 filter brightness-0 invert"
-          />
-        </button>
-        <button
-          className="bg-red-600 p-3 rounded-full shadow-md transition transform duration-300 
-                     ease-in-out hover:bg-red-700 hover:scale-105 focus:outline-none focus:ring-2 
-                     focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-          onClick={leaveRoom}
-        >
-          <img
-            src={phoneIcon}
-            alt="Leave"
-            className="w-5 h-5 filter brightness-0 invert"
-          />
-        </button>
       </div>
     </div>
   );
