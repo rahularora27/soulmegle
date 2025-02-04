@@ -9,7 +9,7 @@ export default function Lobby() {
   const [onlineUsers, setOnlineUsers] = useState(0);
 
   useEffect(() => {
-    const newSocket = io("http://localhost:8000");
+    const newSocket = io(import.meta.env.VITE_SERVER_URL);
     setSocket(newSocket);
 
     newSocket.on("online", (count) => {

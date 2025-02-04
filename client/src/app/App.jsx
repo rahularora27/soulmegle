@@ -29,7 +29,7 @@ function App() {
 
   useEffect(() => {
     // Initialize socket connection
-    socketRef.current = io("http://localhost:8000");
+    socketRef.current = io(import.meta.env.VITE_SERVER_URL);
 
     // Start the initial connection
     initiateConnection();
