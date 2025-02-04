@@ -348,47 +348,43 @@ function App() {
           <img src={logo} alt="SoulMegle Logo" className="h-10 w-10 mr-2" />
           <span className="text-2xl font-bold text-white">SoulMegle</span>
         </div>
+
         {/* Control Buttons */}
-        <div className="flex space-x-4">
+        <div className="flex flex-wrap gap-3">
           <button
-            className={`p-3 rounded-full shadow-md transition transform duration-300 ease-in-out 
-                         hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
-                         focus:ring-offset-2 focus:ring-offset-gray-900
-                         ${
-                           isVideoMuted
-                             ? "bg-gray-700"
-                             : "bg-purple-600 hover:bg-purple-700"
-                         }`}
+            className={`p-3 rounded-full shadow-md transition transform duration-300 hover:scale-105
+                    focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2
+                    ${
+                      isVideoMuted
+                        ? "bg-gray-700"
+                        : "bg-purple-600 hover:bg-purple-700"
+                    }`}
             onClick={toggleVideo}
           >
             <IconDeviceComputerCamera className="text-white" />
           </button>
           <button
-            className={`p-3 rounded-full shadow-md transition transform duration-300 ease-in-out 
-                         hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 
-                         focus:ring-offset-2 focus:ring-offset-gray-900
-                         ${
-                           isAudioMuted
-                             ? "bg-gray-700"
-                             : "bg-purple-600 hover:bg-purple-700"
-                         }`}
+            className={`p-3 rounded-full shadow-md transition transform duration-300 hover:scale-105
+                    focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2
+                    ${
+                      isAudioMuted
+                        ? "bg-gray-700"
+                        : "bg-purple-600 hover:bg-purple-700"
+                    }`}
             onClick={toggleAudio}
           >
             <IconMicrophoneFilled className="text-white" />
           </button>
           <button
-            className={`p-3 rounded-full shadow-md transition transform duration-300 ease-in-out 
-                         hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 
-                         focus:ring-offset-2 focus:ring-offset-gray-900
-                         bg-blue-600 hover:bg-blue-700`}
+            className="p-3 rounded-full bg-blue-600 hover:bg-blue-700 shadow-md transition transform duration-300 hover:scale-105
+                   focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             onClick={skipRoom}
           >
             <IconPlayerTrackNextFilled className="text-white" />
           </button>
           <button
-            className="bg-red-600 p-3 rounded-full shadow-md transition transform duration-300 
-                       ease-in-out hover:bg-red-700 hover:scale-105 focus:outline-none focus:ring-2 
-                       focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+            className="p-3 rounded-full bg-red-600 hover:bg-red-700 shadow-md transition transform duration-300 hover:scale-105
+                   focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
             onClick={leaveRoom}
           >
             <IconPhoneFilled className="text-white" />
@@ -399,32 +395,30 @@ function App() {
       {/* Main Content */}
       <div className="flex flex-col md:flex-row flex-grow overflow-hidden">
         {/* Videos Container */}
-        <div className="flex flex-col w-full md:w-1/2 p-4">
-          <div className="flex flex-col items-center space-y-4">
-            {/* Remote Video */}
-            <div className="relative w-full max-w-md">
-              <video
-                autoPlay
-                ref={strangerVideoRef}
-                className="w-full h-auto bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700"
-              />
-              <span className="absolute top-2 left-2 bg-gray-800 bg-opacity-75 text-gray-200 px-2 py-1 rounded">
-                Stranger
-              </span>
-            </div>
+        <div className="flex flex-col w-full md:w-1/2 p-4 space-y-4">
+          {/* Remote Video */}
+          <div className="relative w-full max-w-md mx-auto">
+            <video
+              autoPlay
+              ref={strangerVideoRef}
+              className="w-full aspect-video bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700"
+            />
+            <span className="absolute top-2 left-2 bg-gray-800 bg-opacity-75 text-gray-200 px-2 py-1 rounded">
+              Stranger
+            </span>
+          </div>
 
-            {/* Local Video */}
-            <div className="relative w-full max-w-md">
-              <video
-                autoPlay
-                muted // Ensure the local video is muted to prevent echo
-                ref={myVideoRef}
-                className="w-full h-auto bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700"
-              />
-              <span className="absolute top-2 left-2 bg-gray-800 bg-opacity-75 text-gray-200 px-2 py-1 rounded">
-                You
-              </span>
-            </div>
+          {/* Local Video */}
+          <div className="relative w-full max-w-md mx-auto">
+            <video
+              autoPlay
+              muted
+              ref={myVideoRef}
+              className="w-full aspect-video bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700"
+            />
+            <span className="absolute top-2 left-2 bg-gray-800 bg-opacity-75 text-gray-200 px-2 py-1 rounded">
+              You
+            </span>
           </div>
         </div>
 
@@ -432,54 +426,43 @@ function App() {
         <div className="flex flex-col w-full md:w-1/2 p-4">
           <div className="flex flex-col flex-1 bg-gray-800 rounded-lg shadow-lg border-2 border-gray-700 p-4 overflow-hidden">
             {/* Messages Display */}
-            <div className="flex-1 overflow-y-auto mb-4">
+            <div className="flex-1 overflow-y-auto space-y-3 p-2 custom-scrollbar">
               {messages.map((msg, index) => (
-                <div key={index}>
-                  {/* Nameholder */}
-                  <div
-                    className={`mb-1 ${
-                      msg.sender === "You" ? "text-right" : "text-left"
+                <div
+                  key={index}
+                  className={`flex ${
+                    msg.sender === "You" ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <span
+                    className={`px-3 py-2 rounded-lg shadow ${
+                      msg.sender === "You"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-700 text-gray-200"
                     }`}
                   >
-                    <span className="text-xs text-gray-400">{msg.sender}</span>
-                  </div>
-                  {/* Message */}
-                  <div
-                    className={`mb-2 ${
-                      msg.sender === "You" ? "text-right" : "text-left"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block px-3 py-2 rounded-lg ${
-                        msg.sender === "You"
-                          ? "bg-purple-600 text-white"
-                          : "bg-gray-700 text-gray-200"
-                      }`}
-                    >
-                      {msg.text}
-                    </span>
-                  </div>
+                    {msg.text}
+                  </span>
                 </div>
               ))}
               <div ref={messagesEndRef} />
             </div>
+
             {/* Input Field and Send Button */}
-            <div className="flex items-center">
+            <div className="flex items-center p-2">
               <input
                 type="text"
                 className="flex-1 px-3 py-2 rounded-lg bg-gray-700 text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 placeholder="Type a message..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    sendMessage();
-                  }
-                }}
+                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
               />
               <button
                 onClick={sendMessage}
-                className="ml-2 px-4 py-2 bg-purple-600 text-white font-bold rounded-lg shadow-md hover:bg-purple-700 transition transform duration-300 ease-in-out hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="ml-2 px-4 py-2 bg-purple-600 text-white font-bold rounded-lg shadow-md 
+                      hover:bg-purple-700 transition transform duration-300 hover:scale-105 focus:outline-none 
+                      focus:ring-2 focus:ring-purple-500"
               >
                 Send
               </button>
