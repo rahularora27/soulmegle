@@ -12,7 +12,13 @@ const {
 } = require("./src/function");
 
 const corsOptions = {
-  origin: [process.env.CLIENT_URL, "http://localhost:5173"],
+  origin: [
+    process.env.CLIENT_URL,
+    "http://localhost:5173",
+    process.env.CLIENT_URL
+      ? process.env.CLIENT_URL.replace("https://", "http://")
+      : null,
+  ].filter(Boolean),
   methods: ["GET", "POST"],
   credentials: true,
 };
