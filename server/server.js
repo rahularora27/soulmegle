@@ -4,6 +4,7 @@ const http = require("http");
 const socketIO = require("socket.io");
 const app = express();
 const server = http.createServer(app);
+const cors = require("cors");
 const {
   handelStart,
   getType,
@@ -13,9 +14,29 @@ const {
 
 const corsOptions = {
   origin: "*",
-  methods: ["GET", "POST"],
   credentials: true,
 };
+
+app.use(cors(corsOptions));
+app.use(express.json());
+
+app.use("/auth", require("./routes/auth"));
+const auth = require("./middleware/auth");
+
+app.get("/protected", auth, async (req, res) => {
+  try {
+    const user = await pool.query("SELECT username FROM users WHERE id = $1", [
+      req.user.id,
+    ]);
+
+    res.json({
+      message: `Welcome ${user.rows[0].username}! This is a protected route.`,
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send("Server error");
+  }
+});
 
 let online = 0;
 let roomArr = [];
