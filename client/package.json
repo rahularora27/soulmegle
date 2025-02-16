@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
     "@tabler/icons-react": "^3.29.0",
     "@tailwindcss/vite": "^4.0.3",
     "dotenv": "^16.4.7",

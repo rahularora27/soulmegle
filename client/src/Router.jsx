@@ -1,7 +1,7 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import App from "./app/App";
-import Lobby from "./components/lobby/Lobby";
-import NotFound from "./components/NotFound/NotFound";
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import App from './app/App';
+import Lobby from './components/lobby/Lobby';
+import NotFound from './components/notfound/NotFound';
 
 export default function Router() {
   return (
