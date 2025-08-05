@@ -82,7 +82,7 @@ export default function Lobby() {
   const analyzeInterests = async (text) => {
     setIsProcessing(true);
     try {
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const prompt = `Extract the main interests from this text. Return only a comma-separated list of keywords: ${text}`;
       const result = await model.generateContent(prompt);
       const response = await result.response;
